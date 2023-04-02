@@ -12,11 +12,11 @@ class Executor {
 public:
     Executor();
 
-    void changeVectorSpaceSize(int size);
+    void changeVectorSpaceSize(int size, int* alpha = nullptr);
 
     bool calculateMonotonicity(std::size_t functionNumber, bool debug = false);
 
-    std::vector<uint8_t> useQuickTransformation(std::vector<uint8_t> f);
+    std::vector<int8_t> useQuickTransformation(std::vector<uint8_t> f);
 
     const bignum_t getTotalFunctionsCount() const;
 
@@ -26,6 +26,7 @@ public:
     const bignum_t getMaxSetsCount() const;
 
     int mVectorSpaceSize;
+    int* m_alphaSet;
 
     Eigen::MatrixXf mTransitionMatrix;
     Eigen::MatrixXf mTransitionMatrixInverse;

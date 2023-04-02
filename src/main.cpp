@@ -4,23 +4,28 @@
 #include <algorithm>
 #include <iterator>
 #include <chrono>
+#include <sstream>
+#include <unistd.h>
 
 #include <executor.hpp>
 
 int main() {
-    std::cout << "qmf, checks boolean function for monotonicity.\nFor changing amount of variables, type @n\nFor exiting, type 'exit'" << std::endl;
+    bool isStdinTerminal = isatty(0);
+
+    if (isStdinTerminal) std::cout << "qmf, checks boolean function for monotonicity.\nFor changing amount of variables, type @n\nFor exiting, type 'exit'" << std::endl;
 
     Executor* executor = new Executor();
 
     bool inDebug = false;
 
     while (true) {
-        std::cout << "qmf> ";
+        if (isStdinTerminal) std::cout << "qmf> ";
 
         std::string input;
 
         std::getline(std::cin, input);
 
+        if (input.length() == 0 || input[0] == '\n') continue;
 
         if (input == "exit") {
             break;
@@ -33,9 +38,36 @@ int main() {
         }
         
         if (input[0] == '@') {
-            int new_size = std::stoi(input.substr(1));
+            std::stringstream ss(input.substr(1));
+            int new_size = 0;
 
-            executor->changeVectorSpaceSize(new_size);
+            ss >> new_size;
+
+            int* alpha = nullptr;
+
+            int pos = 0;
+
+            if (ss.rdbuf()->in_avail() > 0) {
+                alpha = new int[new_size];
+
+                for (int i = 0; i < new_size; i++) {
+                    ss >> alpha[i]; 
+                }
+            }
+
+            if (alpha != nullptr) {
+                std::cout << "alpha_set = ";
+
+                for (int i = 0; i < new_size; i++) {
+                    std::cout << alpha[i] << " ";
+                }
+
+                std::cout << "\n";
+            }
+
+            executor->changeVectorSpaceSize(new_size, alpha);
+
+            delete alpha;
 
             std::cout << "n = " << new_size << std::endl;
             continue;
