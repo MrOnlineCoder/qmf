@@ -16,7 +16,7 @@ public:
 
     bool calculateMonotonicity(std::size_t functionNumber, bool debug = false);
 
-    std::vector<int8_t> useQuickTransformation(std::vector<uint8_t> f);
+    std::vector<int8_t> useQuickTransformation(std::vector<uint8_t> f, bool inverse);
 
     const bignum_t getTotalFunctionsCount() const;
 

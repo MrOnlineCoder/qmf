@@ -55,7 +55,7 @@ void quickTransformer(std::vector<int8_t>& f, int subIndex, int n) {
     int half = std::pow(2, n) / 2;
 
     int npower = std::pow(2, n);
-    std::cout << " half = " << half << " npower = " << npower << " subIndex = " << subIndex << " n = " << n << std::endl;
+    //std::cout << " half = " << half << " npower = " << npower << " subIndex = " << subIndex << " n = " << n << std::endl;
 
     std::vector<int8_t> fo = f;
 
@@ -76,7 +76,33 @@ void quickTransformer(std::vector<int8_t>& f, int subIndex, int n) {
     }
 }
 
-std::vector<int8_t> Executor::useQuickTransformation(std::vector<uint8_t> f) {
+void inverseQuickTransformer(std::vector<int8_t>& f, int subIndex, int n) {
+    int half = std::pow(2, n) / 2;
+
+    int npower = std::pow(2, n);
+    // std::cout << " half = " << half << " npower = " << npower << " subIndex = " << subIndex << " n = " << n << std::endl;
+
+    std::vector<int8_t> fo = f;
+
+    for (int i = 0; i < f.size(); i++) {
+        if (i < half) {
+            if (subIndex == 0) {
+                f[i] = fo[2 * i];
+            } else {
+                f[i] = fo[2*i] - fo[2*i+1];
+            }
+        } else {
+            if (subIndex == 0) {
+                f[i] = fo[2*i - npower +1] - fo[2*i-npower];
+            } else {
+                f[i] = fo[2*i-npower+1];
+            }
+        }
+    }
+}
+
+
+std::vector<int8_t> Executor::useQuickTransformation(std::vector<uint8_t> f, bool inverse) {
     std::vector<int8_t> r;
     r.resize(f.size());
 
@@ -86,7 +112,11 @@ std::vector<int8_t> Executor::useQuickTransformation(std::vector<uint8_t> f) {
 
     for (int i = 0; i < mVectorSpaceSize; i++) {
         int subIndex = m_alphaSet[mVectorSpaceSize - i - 1];
-        quickTransformer(r, subIndex, mVectorSpaceSize);
+         if (inverse) {
+            quickTransformer(r, subIndex, mVectorSpaceSize);
+         } else {
+            inverseQuickTransformer(r, subIndex, mVectorSpaceSize);
+         }
     }
 
     return r;
@@ -94,6 +124,8 @@ std::vector<int8_t> Executor::useQuickTransformation(std::vector<uint8_t> f) {
 
 bool Executor::calculateMonotonicity(std::size_t functionNumber, bool debug) {
     auto begin = std::chrono::high_resolution_clock::now();
+
+    if (functionNumber == 0) return true;
 
     auto func = getLogicalFunction(functionNumber);
 
@@ -117,7 +149,18 @@ bool Executor::calculateMonotonicity(std::size_t functionNumber, bool debug) {
     auto fEnergySpectreVector = (mTransitionMatrix * fVector).cwiseProduct(mTransitionMatrixInverse * fVector);
 
     auto qbegin = std::chrono::high_resolution_clock::now();
-    auto fQuickTransformed = useQuickTransformation(func);
+    auto fQuickTransformed = useQuickTransformation(func, false);
+    auto fQuickInverseTransformed = useQuickTransformation(func, true);
+    std::vector<int8_t> fQuickTransformResult;
+    fQuickTransformResult.resize(fQuickTransformed.size());
+
+    int fQuickEnergyValue = 0;
+
+    for (int i = 0; i < fQuickTransformResult.size(); i++) {
+        fQuickTransformResult[i] = fQuickTransformed[i] * fQuickInverseTransformed[i];
+        fQuickEnergyValue += func[i] * func[i];
+    }
+
     auto qend = std::chrono::high_resolution_clock::now();
     auto qtime = std::chrono::duration_cast<std::chrono::microseconds>(qend - qbegin).count();
 
@@ -135,16 +178,39 @@ bool Executor::calculateMonotonicity(std::size_t functionNumber, bool debug) {
             std::cout << (int) (fQuickTransformed[i]) << " ";
         }
         std::cout << ")" << std::endl;
+        std::cout << "quick inverse transform = (";
+        for (int i = 0; i < fQuickInverseTransformed.size(); i++) {
+            std::cout << (int)(fQuickInverseTransformed[i]) << " ";
+        }
+        std::cout << ")" << std::endl;
+        std::cout << "quick inverse result = (";
+        for (int i = 0; i < fQuickTransformResult.size(); i++) {
+            std::cout << (int)(fQuickTransformResult[i]) << " ";
+        }
+        std::cout << ")" << std::endl;
+        std::cout << "quick energy value = " << fQuickEnergyValue << std::endl;
         std::cout << "qtransform time => (" << qtime << "mcs )" << std::endl;
     }
 
-    for (int i = 0; i < fEnergySpectreVector.size(); i++) {
-        if (i == fEnergySpectreVector.size() - 1) {
-            if (std::abs(fEnergySpectreVector[i] - fEnergyValue) > 0.01) {
+    // for (int i = 0; i < fEnergySpectreVector.size(); i++) {
+    //     if (i == fEnergySpectreVector.size() - 1) {
+    //         if (std::abs(fEnergySpectreVector[i] - fEnergyValue) > 0.01) {
+    //             return false;
+    //         }
+    //     } else {
+    //         if (std::abs(fEnergySpectreVector[i]) > 0.01) {
+    //             return false;
+    //         }
+    //     }
+    // }
+
+    for (int i = 0; i < fQuickTransformResult.size(); i++) {
+        if (i == fQuickTransformResult.size() - 1) {
+            if (std::abs(fQuickTransformResult[i] - fQuickEnergyValue) > 0.01) {
                 return false;
             }
         } else {
-            if (std::abs(fEnergySpectreVector[i]) > 0.01) {
+            if (std::abs(fQuickTransformResult[i]) > 0.01) {
                 return false;
             }
         }
