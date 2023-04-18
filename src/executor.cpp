@@ -55,7 +55,7 @@ void quickTransformer(std::vector<int8_t>& f, int subIndex, int n) {
     int half = std::pow(2, n) / 2;
 
     int npower = std::pow(2, n);
-    //std::cout << " half = " << half << " npower = " << npower << " subIndex = " << subIndex << " n = " << n << std::endl;
+    //std::cout << "direct half = " << half << " npower = " << npower << " subIndex = " << subIndex << " n = " << n << std::endl;
 
     std::vector<int8_t> fo = f;
 
@@ -80,7 +80,7 @@ void inverseQuickTransformer(std::vector<int8_t>& f, int subIndex, int n) {
     int half = std::pow(2, n) / 2;
 
     int npower = std::pow(2, n);
-    // std::cout << " half = " << half << " npower = " << npower << " subIndex = " << subIndex << " n = " << n << std::endl;
+   // std::cout << "inverse half = " << half << " npower = " << npower << " subIndex = " << subIndex << " n = " << n << std::endl;
 
     std::vector<int8_t> fo = f;
 

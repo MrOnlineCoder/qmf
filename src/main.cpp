@@ -96,6 +96,7 @@ int main() {
 
                 if (isMonotonous) {
                     monotonicCount++;
+                    std::cout << i << std::endl;
                 }
             }
 

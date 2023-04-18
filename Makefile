@@ -1,5 +1,5 @@
 CC=g++
-CFLAGS=-Iinclude
+CFLAGS=-Iinclude -std=c++11
 SRC_FILES=src/main.cpp src/executor.cpp
 
 build:
@@ -7,3 +7,8 @@ build:
 
 run: build
 	./qmf
+
+cltest: src/cltest.cpp src/kernel.cl
+	rm -f cltest
+	$(CC) $(CFLAGS) -framework OpenCL -o cltest src/cltest.cpp
+	./cltest
