@@ -8,7 +8,6 @@ build:
 run: build
 	./qmf
 
-cltest: src/cltest.cpp src/kernel.cl
+cltest: src/cltest.cpp src/kernel_m.cl src/kernel_s.cl
 	rm -f cltest
 	$(CC) $(CFLAGS) -framework OpenCL -o cltest src/cltest.cpp
-	./cltest

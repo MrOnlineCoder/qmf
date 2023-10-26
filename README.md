@@ -1,3 +1,6 @@
 ## Етапи створення
 
--- заповнити --
+
+
+
+- opencl, bug with volatile - cut first zero

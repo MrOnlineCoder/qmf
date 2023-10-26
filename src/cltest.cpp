@@ -1,6 +1,12 @@
 #include <iostream>
+#ifdef __APPLE__
 #include <OpenCL/cl.h>
+#else
+#include <CL/cl.h>
+#endif
 #include <fstream>
+#include <cmath>
+#include <climits>
 
 typedef unsigned long long bignum;
 
@@ -11,19 +17,31 @@ cl_command_queue queue;    // command queue
 cl_program program;        // program
 cl_kernel kernel;          // kernel
 cl_mem d_N;
+cl_mem d_hist;
+
+cl_ulong hist[256];
 
 std::size_t localSize = 32;
 
-bignum runChunk(bignum offset, bignum chunkSize)
+int result;
+cl_mem d_result;
+cl_mem d_offset;
+bignum offset;
+
+int dualCount;
+cl_mem d_dualCount;
+
+bignum runChunk(bignum offset, bignum chunkSize, bignum total)
 {
-    bignum result = 0;
-    cl_mem d_result = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(bignum), NULL, NULL);
+    auto offsetResult = clEnqueueWriteBuffer(queue, d_offset, CL_TRUE, 0, sizeof(bignum), &offset, 0, NULL, NULL);
 
-    cl_mem d_offset = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(bignum), NULL, NULL);
+    if (offsetResult)
+    {
+        printf("Error writing offset result %d\n", offsetResult);
+        return 1;
+    }
 
-    clEnqueueWriteBuffer(queue, d_offset, CL_TRUE, 0, sizeof(bignum), &offset, 0, NULL, NULL);
-
-    auto outQueueResult = clEnqueueWriteBuffer(queue, d_result, CL_TRUE, 0, sizeof(bignum), &result, 0, NULL, NULL);
+    auto outQueueResult = clEnqueueWriteBuffer(queue, d_result, CL_TRUE, 0, sizeof(int), &result, 0, NULL, NULL);
 
     if (outQueueResult)
     {
@@ -31,17 +49,37 @@ bignum runChunk(bignum offset, bignum chunkSize)
         return 1;
     }
 
+    auto out2QueueResult = clEnqueueWriteBuffer(queue, d_dualCount, CL_TRUE, 0, sizeof(int), &dualCount, 0, NULL, NULL);
+
+    if (out2QueueResult)
+    {
+        printf("Error writing to result2 buffer\n");
+        return 1;
+    }
+
+    auto outQueueHist = clEnqueueWriteBuffer(queue, d_hist, CL_TRUE, 0, sizeof(cl_ulong) * 256, &hist, 0, NULL, NULL);
+
+    if (outQueueHist)
+    {
+        printf("Error writing to hist buffer: %d\n", outQueueHist);
+        return 1;
+    }
+
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &d_N);
+    // clSetKernelArg(kernel, 1, sizeof(cl_mem), &d_hist);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &d_result);
     clSetKernelArg(kernel, 2, sizeof(cl_mem), &d_offset);
+    clSetKernelArg(kernel, 3, sizeof(cl_mem), &d_dualCount);
+    clSetKernelArg(kernel, 4, sizeof(cl_mem), &d_hist);
 
-    std::size_t globalSize = std::pow(2, std::pow(2, N)) - localSize * localSize;
+    std::size_t globalSize = chunkSize;
+    std::size_t chunkLocalSize = chunkSize;
 
-    printf("Queueing kernel with local size %lu and global size %lu\n", localSize, globalSize);
+    // printf("Queueing kernel with local size %lu and global size %lu\n", chunkLocalSize, globalSize);
 
     auto kernelQueueResult = clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &globalSize, &localSize, 0, NULL, NULL);
 
-    printf("Kernel queue result: %d\n", kernelQueueResult);
+    // printf("Kernel queue result: %d\n", kernelQueueResult);
 
     if (kernelQueueResult)
     {
@@ -51,23 +89,30 @@ bignum runChunk(bignum offset, bignum chunkSize)
         return 1;
     }
 
-    printf("Waiting for queue to finish... \n");
+    // printf("Waiting for queue to finish... \n");
 
     clFinish(queue);
 
-    printf("Reading result... \n");
+    // printf("Reading result... \n");
 
-    clEnqueueReadBuffer(queue, d_result, CL_TRUE, 0, sizeof(bignum), &result, 0, NULL, NULL);
+    clEnqueueReadBuffer(queue, d_result, CL_TRUE, 0, sizeof(int), &result, 0, NULL, NULL);
+    clEnqueueReadBuffer(queue, d_dualCount, CL_TRUE, 0, sizeof(int), &dualCount, 0, NULL, NULL);
+    clEnqueueReadBuffer(queue, d_hist, CL_TRUE, 0, sizeof(cl_ulong) * 256, &hist, 0, NULL, NULL);
 
-    clReleaseMemObject(d_result);
+    double percent = ((double)(offset + chunkSize) / (double)total) * 100;
+
+    std::cout << "Chunk (" << offset << " , " << offset + chunkSize << ", " << percent << "%) => " << result << std::endl;
 
     return result;
 }
 
 int main(int argc, char *argv[])
 {
-
-    std::ifstream kernelFile("src/kernel.cl");
+#ifdef __APPLE__
+    std::ifstream kernelFile("src/kernel_m.cl");
+#else
+    std::ifstream kernelFile("kernel.cl");
+#endif
 
     std::string src(std::istreambuf_iterator<char>(kernelFile), (std::istreambuf_iterator<char>()));
 
@@ -75,10 +120,7 @@ int main(int argc, char *argv[])
 
     clGetPlatformIDs(1, &cpPlatform, NULL);
 
-    cl_mem d_result;
-
-    int N = 5;
-    std::uint64_t result = 0;
+    int N = std::atoi(argv[1]);
 
     cl_int err = 0;
 
@@ -96,7 +138,7 @@ int main(int argc, char *argv[])
     {
         char buildLog[2048];
         clGetProgramBuildInfo(program, device_id, CL_PROGRAM_BUILD_LOG, 2048, buildLog, NULL);
-        printf("Error building program: %s\n", buildLog);
+        printf("Error building program (%d): %s\n", buildError, buildLog);
         return 1;
     }
 
@@ -109,9 +151,17 @@ int main(int argc, char *argv[])
     }
 
     d_N = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(int), NULL, NULL);
-    d_result = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(std::uint64_t), NULL, NULL);
+    d_result = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(int), NULL, NULL);
+    d_offset = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(bignum), NULL, NULL);
+    d_dualCount = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(int), NULL, NULL);
+    d_hist = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(cl_ulong) * 256, NULL, NULL);
 
-    if (!d_N || !d_result)
+    for (int i = 0; i < 256; i++)
+    {
+        hist[i] = 0;
+    }
+
+    if (!d_N || !d_result || !d_hist || !d_offset || !d_dualCount)
     {
         printf("Error creating buffers\n");
         return 1;
@@ -127,18 +177,58 @@ int main(int argc, char *argv[])
 
     clGetKernelWorkGroupInfo(kernel, device_id, CL_KERNEL_WORK_GROUP_SIZE, sizeof(localSize), &localSize, NULL);
 
-    bignum functionsCount = std::pow(2, std::pow(2, N));
+    // localSize = 256;
+    bignum functionsCount = N == 6 ? ULLONG_MAX - 1 : std::pow(2, std::pow(2, N));
+    // functionsCount = functionsCount >> 1; // divide by 2
+    std::cout << "funcs count: " << functionsCount << std::endl;
+    bignum chunkSize = N == 6 ? 67305472 : localSize;
+    if (N == 5)
+        chunkSize = 16777216;
+    if (N < 4)
+        chunkSize = 8;
+    bignum chunkableCount = functionsCount - functionsCount % chunkSize;
 
-    bignum chunkSize = localSize * localSize;
+    bignum processed = 0;
+    int chunks = 0;
 
-    std::cout << "Result: " << result << std::endl;
+    bignum percentStep = 0;
+    printf("local: %d\n", localSize);
+    while (processed < chunkableCount)
+    {
+        runChunk(processed, chunkSize, functionsCount);
+
+        processed += chunkSize;
+        chunks++;
+
+        // float percent = ((double)processed / (double)functionsCount) * 100;
+
+        // std::cout << "Chunk " << chunks << " => offset " << processed << "(" << percent << "%)" << std::endl;
+    }
+
+    // result++; // last function is always monotonic
+
+    std::cout << "Result: " << result << " (" << processed << " / " << functionsCount << ")" << std::endl;
+    std::cout << "Dual count out of " << result << ": " << dualCount << std::endl;
 
     clReleaseMemObject(d_N);
     clReleaseMemObject(d_result);
+    clReleaseMemObject(d_hist);
+    clReleaseMemObject(d_offset);
+    clReleaseMemObject(d_dualCount);
     clReleaseProgram(program);
     clReleaseKernel(kernel);
     clReleaseCommandQueue(queue);
     clReleaseContext(context);
+
+    std::ofstream histFile("hist.csv");
+
+    histFile << "INDEX,COUNT\n";
+    for (int i = 0; i < 256; i++)
+    {
+        histFile << i + 1 << "," << hist[i] << "\n";
+    }
+
+    histFile.close();
 
     return 0;
 }
